@@ -15,6 +15,7 @@
     "@blocknote/react": "^0.51.4",
     "axios": "^1.18.1",
     "cmdk": "^1.1.1",
+    "firebase": "^12.16.0",
     "jotai": "^2.20.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
