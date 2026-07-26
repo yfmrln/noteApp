@@ -1,59 +1,156 @@
-import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from './firebase';
+import {
+  deleteDoc,
+  doc,
+  getDoc,
+  setDoc,
+} from 'firebase/firestore';
 
+import { auth, db, } from './firebase';
+
+/**
+ * セッション情報を保存するコレクション名
+ *
+ * Firestore
+ *
+ * sessions
+ *   └─ UID
+ */
 const SESSION_COLLECTION = 'sessions';
-const SESSION_DOCUMENT = 'current';
 
-type SessionUser = {
+/**
+ * セッションに保存するユーザー情報
+ */
+export type SessionUser = {
   id: string;
   email: string;
   name: string;
   isAnonymous?: boolean;
 };
+
+/**
+ * Firestoreへ保存するセッション情報
+ */
 type SessionPayload = {
   token: string;
   user?: SessionUser;
+  updatedAt: string;
 };
 
-export const readSessionToken = async (): Promise<string | null> => {
-  if (!db) return null;
+/**
+ * 現在ログインしているユーザーの
+ * セッションドキュメントを取得します。
+ *
+ * Firestore
+ *
+ * sessions
+ *   └─ UID
+ */
+const getSessionDoc = () => {
 
-  const snapshot = await getDoc(doc(db, SESSION_COLLECTION, SESSION_DOCUMENT));
-  if (!snapshot.exists()) return null;
+  if (!db) {
+    throw new Error(
+      'Firestoreが初期化されていません。'
+    );
+  }
 
-  const data = snapshot.data() as SessionPayload;
-  return data.token ?? null;
+  if (!auth) {
+    throw new Error(
+      'Firebase Authenticationが初期化されていません。'
+    );
+  }
+
+  /**
+   * Firebase Authenticationへ
+   * ログイン中のユーザーを取得します。
+   */
+  const currentUser = auth.currentUser;
+
+  if (!currentUser) {
+    throw new Error(
+      'ログインしていません。'
+    );
+  }
+
+  /**
+   * ドキュメントIDは
+   * Firebase Authentication の UID を使用します。
+   */
+  return doc(
+    db,
+    SESSION_COLLECTION,
+    currentUser.uid,
+  );
 };
 
-export const readSessionUser = async (): Promise<SessionUser | undefined> => {
-  if (!db) return undefined;
+/**
+ * 保存されているトークンを取得します。
+ */
+export const readSessionToken =
+  async (): Promise<string | null> => {
 
-  const snapshot = await getDoc(doc(db, SESSION_COLLECTION, SESSION_DOCUMENT));
-  if (!snapshot.exists()) return undefined;
+    const snapshot =
+      await getDoc(getSessionDoc());
 
-  const data = snapshot.data() as SessionPayload;
-  return data.user;
-};
+    if (!snapshot.exists()) {
+      return null;
+    }
 
+    const data =
+      snapshot.data() as SessionPayload;
+
+    return data.token;
+  };
+
+/**
+ * 保存されているユーザー情報を取得します。
+ */
+export const readSessionUser =
+  async (): Promise<SessionUser | undefined> => {
+
+    const snapshot =
+      await getDoc(getSessionDoc());
+
+    if (!snapshot.exists()) {
+      return undefined;
+    }
+
+    const data =
+      snapshot.data() as SessionPayload;
+
+    return data.user;
+  };
+
+/**
+ * セッション情報を書き込みます。
+ *
+ * merge:true にしているため、
+ * 既存のデータを残したまま更新できます。
+ */
 export const writeSession = async (
   token: string,
   user: SessionUser,
 ) => {
-  if (!db) return;
 
   await setDoc(
-    doc(db, SESSION_COLLECTION, SESSION_DOCUMENT),
+    getSessionDoc(),
     {
       token,
       user,
       updatedAt: new Date().toISOString(),
     },
-    { merge: true },
+    {
+      merge: true,
+    },
   );
 };
 
+/**
+ * セッション情報を削除します。
+ */
 export const clearSession = async () => {
-  if (!db) return;
 
-  await deleteDoc(doc(db, SESSION_COLLECTION, SESSION_DOCUMENT));
+  await deleteDoc(
+    getSessionDoc(),
+  );
+
 };

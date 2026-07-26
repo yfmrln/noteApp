@@ -1,167 +1,599 @@
-// このファイルはノートの保存・取得・更新・削除をまとめて管理します。
-// UI 側からはこのファイルを通して Firestore とやり取りします。
+// Firestore から必要な機能を読み込みます。
 import {
-    collection,
-    deleteDoc,
-    doc,
-    getDoc,
-    getDocs,
-    setDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  where,
 } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import { readSessionUser } from '../../lib/firestore-session';
+
+// Firebase Authentication とFirestore本体を読み込みます。
+import { auth, db } from '../../lib/firebase';
+
+// Noteクラス
 import { Note } from './note.entity';
 
-const getNotesCollection = () => collection(db!, 'notes');
-const getNoteDoc = (id: number) => doc(db!, 'notes', String(id));
 
-const normalizeNote = (id: number, data: Record<string, unknown>): Note => {
-    return new Note({
-        id,
-        userId: data.userId as string,
-        title: data.title as string | undefined,
-        content: data.content as string | undefined,
-        parentId: data.parentId as number | undefined,
-        createAt: data.createAt as Date,
-    });
+/**
+ * notesコレクションを取得します。
+ *
+ * Firestoreでは、
+ * collection() を使って操作対象を指定します。
+ */
+const getNotesCollection = () =>
+  collection(db!, 'notes');
+
+
+
+/**
+ * Firestoreから取得したデータを
+ * Noteクラスへ変換します。
+ *
+ * Firestoreのデータは型が保証されないため、
+ * ここで安全な形へ変換します。
+ */
+const normalizeNote = (
+  id: string,
+  data: Record<string, unknown>,
+): Note => {
+
+  return new Note({
+
+    // ドキュメントID
+    id,
+
+
+    // ユーザーID
+    userId:
+      typeof data.userId === 'string'
+        ? data.userId
+        : '',
+
+
+    // タイトル
+    title:
+        typeof data.title === 'string'
+            ? data.title
+            : '無題',
+
+
+    // 本文
+    content:
+      typeof data.content === 'string'
+        ? data.content
+        : null,
+
+
+    // 親ノートID
+    parentId:
+      typeof data.parentId === 'string'
+        ? data.parentId
+        : null,
+
+
+    // 作成日時
+    createAt:
+      typeof data.createAt === 'string'
+        ? data.createAt
+        : new Date().toISOString(),
+
+  });
+
 };
 
-const getCurrentUserId = async () => {
-    const sessionUser = await readSessionUser();
-    return sessionUser;
-};
 
-const filterAccessibleNotes = (notes: Note[], currentUser?: { id: string; isAnonymous?: boolean }) => {
-    if (!currentUser) {
-        return [];
-    }
-
-    return notes.filter((note) => note.userId === currentUser.id);
-};
 
 export const noteRepository = {
-    async find(options?: {
-        parentId?: number;
-        keyword?: string;
-    }): Promise<Note[]> {
-        if (!db) return [];
 
-        const currentUser = await getCurrentUserId();
-        const result = await getDocs(getNotesCollection());
-        const notes = result.docs.map((snapshot) =>
-            normalizeNote(Number(snapshot.id), snapshot.data()),
+
+  /**
+   * ノート一覧を取得します。
+   *
+   * サンプルログインでもFirebase Authenticationは
+   * UIDを持っています。
+   *
+   * そのため通常ユーザーと同じく
+   * userIdで検索します。
+   */
+  async find(
+    options?: {
+      parentId?: string | null;
+      keyword?: string;
+    },
+  ): Promise<Note[]> {
+
+
+    // Firebaseが利用できない場合
+    if (!db || !auth) {
+      return [];
+    }
+
+
+    // 現在ログイン中のユーザー取得
+    const currentUser =
+      auth.currentUser;
+
+
+    // 未ログインの場合
+    if (!currentUser) {
+      return [];
+    }
+
+
+
+    /**
+     * Firestore Rules:
+     *
+     * request.auth.uid
+     * ==
+     * notes.userId
+     *
+     * の条件に合わせています。
+     *
+     * サンプルユーザーもUIDを持つため
+     * この条件で取得できます。
+     */
+    const firestoreQuery =
+      query(
+        getNotesCollection(),
+        where(
+          'userId',
+          '==',
+          currentUser.uid,
+        ),
+      );
+
+
+
+    // Firestoreから取得
+    const snapshot =
+      await getDocs(
+        firestoreQuery,
+      );
+
+
+
+    // FirestoreデータをNote型へ変換
+    let notes =
+      snapshot.docs.map(
+        (docSnapshot) =>
+          normalizeNote(
+            docSnapshot.id,
+            docSnapshot.data(),
+          ),
+      );
+
+
+
+    // 親ノートで絞り込み
+    if (options?.parentId !== undefined) {
+
+      notes =
+        notes.filter(
+          (note) =>
+            note.parentId === options.parentId,
         );
 
-        const filtered = filterAccessibleNotes(notes, currentUser);
+    }
 
-        if (options?.parentId != null) {
-            return filtered.filter((note) => note.parentId === options.parentId);
-        }
 
-        if (options?.keyword) {
-            const keyword = options.keyword.trim().toLowerCase();
-            return filtered.filter((note) =>
-                (note.title ?? '').toLowerCase().includes(keyword),
-            );
-        }
 
-        return filtered;
+    // タイトル検索
+    if (options?.keyword) {
+
+      const keyword =
+        options.keyword
+          .trim()
+          .toLowerCase();
+
+
+      notes =
+        notes.filter(
+          (note) =>
+            note.title
+              .toLowerCase()
+              .includes(keyword),
+        );
+
+    }
+
+
+    return notes;
+
+  },
+
+
+
+  /**
+   * ノートを新規作成します。
+   */
+  async create(
+    params: {
+      title?: string;
+      parentId?: string | null;
     },
-    async create(params: { title?: string; parentId?: number }): Promise<Note> {
-        if (!db) {
-            throw new Error('Firebase の初期化が完了していません。環境変数を確認してください。');
-        }
+  ): Promise<Note> {
 
-        const currentUser = await getCurrentUserId();
-        const id = Date.now();
-        const noteData = {
-            id,
-            userId: currentUser?.id ?? 'guest',
-            title: params.title ?? '無題',
-            content: '',
-            parentId: params.parentId ?? null,
-            createAt: new Date().toISOString(),
-        };
 
-        await setDoc(getNoteDoc(id), noteData);
-        return normalizeNote(id, noteData);
+    if (!db || !auth) {
+
+      throw new Error(
+        'Firebaseの初期化が完了していません。',
+      );
+
+    }
+
+
+
+    const currentUser =
+      auth.currentUser;
+
+
+
+    if (!currentUser) {
+
+      throw new Error(
+        'ログインしてください。',
+      );
+
+    }
+
+
+
+    // FirestoreがIDを自動生成
+    const noteDoc =
+      doc(
+        getNotesCollection(),
+      );
+
+
+
+    /**
+     * 保存するデータ
+     *
+     * userIdには必ずログインユーザーUIDを保存します。
+     */
+    const noteData = {
+
+      id: noteDoc.id,
+
+      userId:
+        currentUser.uid,
+
+      title:
+        params.title ?? '無題',
+
+      content:
+        '',
+
+      parentId:
+        params.parentId ?? null,
+
+      createAt:
+        new Date().toISOString(),
+
+    };
+
+
+
+    await setDoc(
+      noteDoc,
+      noteData,
+    );
+
+
+
+    return normalizeNote(
+      noteDoc.id,
+      noteData,
+    );
+
+  },
+
+
+
+  /**
+   * ノートを1件取得します。
+   */
+  async findOne(
+    id: string,
+  ): Promise<Note> {
+
+
+    if (!db || !auth) {
+
+      throw new Error(
+        'Firebaseの初期化が完了していません。',
+      );
+
+    }
+
+
+
+    const currentUser =
+      auth.currentUser;
+
+
+
+    if (!currentUser) {
+
+      throw new Error(
+        'ログインしてください。',
+      );
+
+    }
+
+
+
+    const noteDoc =
+      doc(
+        db,
+        'notes',
+        id,
+      );
+
+
+
+    const snapshot =
+      await getDoc(
+        noteDoc,
+      );
+
+
+
+    if (!snapshot.exists()) {
+
+      throw new Error(
+        'ノートが存在しません。',
+      );
+
+    }
+
+
+
+    const note =
+      normalizeNote(
+        snapshot.id,
+        snapshot.data(),
+      );
+
+
+
+    /**
+     * 自分のノートだけ利用可能です。
+     *
+     * サンプルユーザーもUIDを持つため
+     * 同じチェックを行います。
+     */
+    if (
+      note.userId !== currentUser.uid
+    ) {
+
+      throw new Error(
+        'このノートは閲覧できません。',
+      );
+
+    }
+
+
+
+    return note;
+
+  },
+
+
+
+  /**
+   * ノートを更新します。
+   */
+  async update(
+    id: string,
+    data: {
+      title?: string;
+      content?: string;
     },
-    async findOne(id: number): Promise<Note> {
-        if (!db) {
-            throw new Error('Firebase の初期化が完了していません。環境変数を確認してください。');
-        }
+  ): Promise<Note> {
 
-        const currentUser = await getCurrentUserId();
-        const snapshot = await getDoc(getNoteDoc(id));
-        if (!snapshot.exists()) {
-            throw new Error('ノートが存在しません');
-        }
 
-        const note = normalizeNote(id, snapshot.data());
-        if (!currentUser) {
-            throw new Error('このノートは閲覧できません');
-        }
+    if (!db || !auth) {
 
-        if (note.userId !== currentUser.id) {
-            throw new Error('このノートは閲覧できません');
-        }
+      throw new Error(
+        'Firebaseの初期化が完了していません。',
+      );
 
-        return note;
-    },
-    async update(
-        id: number,
-        note: { title?: string; content?: string },
-    ): Promise<Note> {
-        if (!db) {
-            throw new Error('Firebase の初期化が完了していません。環境変数を確認してください。');
-        }
+    }
 
-        const currentUser = await getCurrentUserId();
-        const snapshot = await getDoc(getNoteDoc(id));
-        if (!snapshot.exists()) {
-            throw new Error('ノートが存在しません');
-        }
 
-        const currentData = snapshot.data();
-        const noteData = normalizeNote(id, currentData);
-        if (!currentUser) {
-            throw new Error('このノートは編集できません');
-        }
 
-        if (noteData.userId !== currentUser.id) {
-            throw new Error('このノートは編集できません');
-        }
+    const currentUser =
+      auth.currentUser;
 
-        const updatedData = {
-            ...currentData,
-            ...note,
-            createAt: currentData.createAt ?? new Date().toISOString(),
-        };
 
-        await setDoc(getNoteDoc(id), updatedData, { merge: true });
-        return normalizeNote(id, updatedData);
-    },
-    async delete(id: number): Promise<boolean> {
-        if (!db) {
-            throw new Error('Firebase の初期化が完了していません。環境変数を確認してください。');
-        }
 
-        const currentUser = await getCurrentUserId();
-        const snapshot = await getDoc(getNoteDoc(id));
-        if (!snapshot.exists()) {
-            throw new Error('ノートが存在しません');
-        }
+    if (!currentUser) {
 
-        const note = normalizeNote(id, snapshot.data());
-        if (!currentUser) {
-            throw new Error('このノートは削除できません');
-        }
+      throw new Error(
+        'ログインしてください。',
+      );
 
-        if (note.userId !== currentUser.id) {
-            throw new Error('このノートは削除できません');
-        }
+    }
 
-        await deleteDoc(getNoteDoc(id));
-        return true;
-    },
+
+
+    const noteDoc =
+      doc(
+        db,
+        'notes',
+        id,
+      );
+
+
+
+    const snapshot =
+      await getDoc(
+        noteDoc,
+      );
+
+
+
+    if (!snapshot.exists()) {
+
+      throw new Error(
+        'ノートが存在しません。',
+      );
+
+    }
+
+
+
+    const currentData =
+      snapshot.data();
+
+
+
+    const currentNote =
+      normalizeNote(
+        snapshot.id,
+        currentData,
+      );
+
+
+
+    // 所有者確認
+    if (
+      currentNote.userId !== currentUser.uid
+    ) {
+
+      throw new Error(
+        'このノートは編集できません。',
+      );
+
+    }
+
+
+
+    const updatedData = {
+
+      ...currentData,
+
+      ...data,
+
+    };
+
+
+
+    await setDoc(
+      noteDoc,
+      updatedData,
+      {
+        merge:true,
+      },
+    );
+
+
+
+    return normalizeNote(
+      noteDoc.id,
+      updatedData,
+    );
+
+  },
+
+
+
+  /**
+   * ノートを削除します。
+   */
+  async delete(
+    id:string,
+  ):Promise<boolean>{
+
+
+    if(!db || !auth){
+
+      throw new Error(
+        'Firebaseの初期化が完了していません。',
+      );
+
+    }
+
+
+
+    const currentUser =
+      auth.currentUser;
+
+
+
+    if(!currentUser){
+
+      throw new Error(
+        'ログインしてください。',
+      );
+
+    }
+
+
+
+    const noteDoc =
+      doc(
+        db,
+        'notes',
+        id,
+      );
+
+
+
+    const snapshot =
+      await getDoc(
+        noteDoc,
+      );
+
+
+
+    if(!snapshot.exists()){
+
+      throw new Error(
+        'ノートが存在しません。',
+      );
+
+    }
+
+
+
+    const note =
+      normalizeNote(
+        snapshot.id,
+        snapshot.data(),
+      );
+
+
+
+    /**
+     * 自分のノートだけ削除できます。
+     */
+    if(
+      note.userId !== currentUser.uid
+    ){
+
+      throw new Error(
+        'このノートは削除できません。',
+      );
+
+    }
+
+
+
+    await deleteDoc(
+      noteDoc,
+    );
+
+
+
+    return true;
+
+  },
+
 };

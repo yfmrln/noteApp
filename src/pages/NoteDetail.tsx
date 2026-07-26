@@ -1,56 +1,193 @@
-import { useParams } from 'react-router-dom';
-import TitleInput from '../components/TitleInput';
-import '../styles/pages/note-detail.css';
-import { noteRepository } from '../modules/notes/note.repository';
-import { useNoteStore } from '../modules/notes/notes.state';
 import { useEffect, useState } from 'react';
-import { Editor } from '../components/Editor';
+import { useParams } from 'react-router-dom';
 import { useDebouncedCallback } from 'use-debounce';
 
-// この画面はノートの内容を表示・編集するためのページです。
-// URLに含まれる ID を使って、対象のノートを読み込みます。
+import { Editor } from '../components/Editor';
+import TitleInput from '../components/TitleInput';
+
+import { noteRepository } from '../modules/notes/note.repository';
+import { useNoteStore } from '../modules/notes/notes.state';
+
+import '../styles/pages/note-detail.css';
+
+/**
+ * ノート詳細画面です。
+ *
+ * URLで指定されたノートを取得し、
+ * タイトルと本文を編集できます。
+ */
 export default function NoteDetail() {
-  const params = useParams();
-  const id = parseInt(params.id!);
-  const [isLoading, setIsLoading] = useState(false);
-  const noteStore = useNoteStore();
-  const note = noteStore.getOne(id);
 
+  /**
+   * URLパラメータ
+   */
+  const { id } = useParams();
+
+  /**
+   * ノート一覧(State)
+   */
+  const noteStore =
+    useNoteStore();
+
+  /**
+   * 読み込み中
+   */
+  const [
+    isLoading,
+    setIsLoading,
+  ] = useState(false);
+
+  /**
+   * 現在のノート
+   */
+  const note =
+    id
+      ? noteStore.getOne(id)
+      : undefined;
+
+  /**
+   * ノート取得
+   */
   useEffect(() => {
-    fetchOne();
-  }, [id]);
 
+    if (!id) {
+      return;
+    }
+    void fetchOne();
+
+  }, [
+    id,
+  ]);
+
+  /**
+   * Firestoreから
+   * ノートを取得します。
+   */
   const fetchOne = async () => {
-    setIsLoading(true);
-    const note = await noteRepository.findOne(id);
-    noteStore.set([note]);
-    setIsLoading(false);
+
+    if (!id) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const note =
+        await noteRepository.findOne(id);
+
+      noteStore.set([
+        note,
+      ]);
+
+    } catch (error) {
+      console.error(error);
+      alert(
+        'ノートの取得に失敗しました。',
+      );
+
+    } finally {
+      setIsLoading(false);
+    }
+
   };
 
+  /**
+   * ノート更新
+   */
   const updateNote = async (
-    id: number,
-    note: { title?: string; content?: string },
+    noteId: string,
+    values: {
+      title?: string;
+      content?: string;
+    },
+
   ) => {
-    const updatedNote = await noteRepository.update(id, note);
-    noteStore.set([updatedNote]);
-    return updatedNote;
+
+    try {
+
+      const updatedNote =
+        await noteRepository.update(
+          noteId,
+          values,
+        );
+      noteStore.set([
+        updatedNote,
+      ]);
+      return updatedNote;
+
+    } catch (error) {
+
+      console.error(error);
+      alert(
+        'ノートの保存に失敗しました。',
+      );
+    }
   };
 
-  const debounced = useDebouncedCallback(updateNote, 500);
+  /**
+   * 入力途中は保存せず、
+   * 500ms入力が止まったら保存します。
+   */
+  const debouncedUpdate =
+    useDebouncedCallback(
+      updateNote,
+      500,
+    );
 
-  if (isLoading) return <div />;
-  if (!note) return <div>note is not existed</div>;
+  /**
+   * IDがない
+   */
+  if (!id) {
+    return (
+      <div>
+        ノートIDが指定されていません。
+      </div>
+    );
+  }
+
+  /**
+   * 読み込み中
+   */
+  if (isLoading) {
+    return <div />;
+  }
+
+  /**
+   * ノートが存在しない
+   */
+  if (!note) {
+    return (
+      <div>
+        ノートが見つかりません。
+      </div>
+    );
+  }
 
   return (
     <div className="note-detail-container">
       <div className="note-detail-content">
-        <TitleInput 
+        <TitleInput
           initialData={note}
-          onTitleChange={(title) => debounced(id, { title })}
+          onTitleChange={(title) =>
+            debouncedUpdate(
+              id,
+              {
+                title,
+              },
+            )
+          }
         />
         <Editor
-          initialContent={note.content}
-          onChange={(content) => debounced(id, { content })}
+          initialContent={
+            note.content
+          }
+          onChange={(content) =>
+            debouncedUpdate(
+              id,
+              {
+                content,
+              },
+            )
+          }
         />
       </div>
     </div>

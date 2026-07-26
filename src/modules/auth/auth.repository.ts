@@ -1,125 +1,286 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import { readSessionToken } from '../../lib/firestore-session';
+import {
+  createUserWithEmailAndPassword,
+  signInAnonymously,
+  signInWithEmailAndPassword,
+} from 'firebase/auth';
+
+import {
+  doc,
+  getDoc,
+  setDoc,
+} from 'firebase/firestore';
+
+import {
+  auth,
+  db,
+} from '../../lib/firebase';
+
 import { User } from '../users/user.entity';
 
+/**
+ * メールアドレスを統一した形式へ変換します。
+ *
+ * 例
+ * TEST@EXAMPLE.COM
+ * ↓
+ * test@example.com
+ */
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
-const getUserDoc = (email: string) => doc(db!, 'users', normalizeEmail(email));
 
-const hashPassword = async (password: string) => {
-    const encoder = new TextEncoder();
-    const digest = await crypto.subtle.digest('SHA-256', encoder.encode(password));
-
-    return Array.from(new Uint8Array(digest), (byte) =>
-        byte.toString(16).padStart(2, '0'),
-    ).join('');
-};
-
-const verifyPassword = async (
-    password: string,
-    storedPassword?: string,
-) => {
-    if (!storedPassword) return false;
-
-    const passwordHash = await hashPassword(password);
-    return passwordHash === storedPassword || password === storedPassword;
-};
+/**
+ * users コレクションの参照を取得します。
+ */
+const getUserDoc = (uid: string) => doc(db!, 'users', uid);
 
 export const authRepository = {
-    async signup(
-        name: string,
-        email: string,
-        password: string,
-    ): Promise<{ user: User; token: string }> {
+  /**
+   * 新規登録
+   *
+   * Firebase Authenticationへユーザーを登録します。
+   */
+  async signup(
+    name: string,
+    email: string,
+    password: string,
+  ): Promise<{ user: User; token: string }> {
+
+    if (!auth || !db) {
+      throw new Error(
+        'Firebaseの初期化が完了していません。',
+      );
+    }
+
+    // メールアドレスを統一
+    const normalizedEmail = normalizeEmail(email);
+
+    /**
+     * Firebase Authenticationへ登録
+     */
+    const credential =
+      await createUserWithEmailAndPassword(
+        auth,
+        normalizedEmail,
+        password,
+      );
+
+    /**
+     * Firebase Authenticationが発行したUID
+     */
+    const uid = credential.user.uid;
+
+    /**
+     * Firestoreにはプロフィールのみ保存します。
+     *
+     * パスワードは保存しません。
+     */
+    await setDoc(getUserDoc(uid), {
+      id: uid,
+      name,
+      email: normalizedEmail,
+    });
+
+    /**
+     * IDトークンを取得します。
+     */
+    const token =
+      await credential.user.getIdToken();
+
+    return {
+      user: new User({
+        id: uid,
+        name,
+        email: normalizedEmail,
+      }),
+      token,
+    };
+  },
+
+  /**
+   * メールアドレスでログイン
+   */
+  async signin(
+    email: string,
+    password: string,
+  ): Promise<{ user: User; token: string }> {
+
+    if (!auth || !db) {
+      throw new Error(
+        'Firebaseの初期化が完了していません。',
+      );
+    }
+
+    const normalizedEmail =
+      normalizeEmail(email);
+
+    /**
+     * Firebase Authenticationへログイン
+     */
+    const credential =
+      await signInWithEmailAndPassword(
+        auth,
+        normalizedEmail,
+        password,
+      );
+
+    /**
+     * Firestoreからプロフィールを取得します。
+     */
+    const snapshot =
+      await getDoc(getUserDoc(credential.user.uid));
+
+    if (!snapshot.exists()) {
+      throw new Error(
+        'ユーザー情報が存在しません。'
+      );
+    }
+
+    const data = snapshot.data();
+
+    const token =
+      await credential.user.getIdToken();
+
+    return {
+      user: new User({
+        id: data.id,
+        name: data.name,
+        email: data.email,
+      }),
+      token,
+    };
+  },
+
+  /**
+   * サンプルログイン
+   */
+async signinAnonymously(): Promise<{
+  user: User;
+  token: string;
+}> {
+
+
+  if (!auth) {
+
+    throw new Error(
+      'Firebaseの初期化が完了していません。',
+    );
+
+  }
+
+    /*
+    * Firebase Authenticationで
+    * サンプルユーザーを作成します。
+    *
+    * Firebaseが自動でUIDを発行します。
+    */
+    const credential =
+        await signInAnonymously(auth);
+
+
+
+    const uid =
+        credential.user.uid;
+
+    /**
+     * 初回だけFirestoreへ保存します。
+     */
+    const userRef = getUserDoc(uid);
+
+    const snapshot = await getDoc(userRef);
+
+    if (!snapshot.exists()) {
+
+      await setDoc(userRef, {
+        id: uid,
+        name: 'サンプルユーザー',
+        email: '',
+        isAnonymous: true,
+      });
+
+    }
+
+  /*
+   * Firebaseからログイントークン取得
+   */
+  const token =
+    await credential.user.getIdToken();
+
+  return {
+
+    user:
+      new User({
+        id: uid,
+        name:
+          'サンプルユーザー',
+        email:
+          '',
+        isAnonymous:
+          true,
+      }),
+    token,
+
+  };
+  },
+
+    /**
+     * 現在ログインしているユーザーを取得します。
+     *
+     * 処理の流れ
+     * 1. Firebase Authenticationでログイン中か確認
+     * 2. セッション情報を取得
+     * 3. セッションに保存されているユーザー情報を返す
+     */
+    async getCurrentUser(): Promise<User | undefined> {
+
+        // Firebase Authentication が初期化されているか確認
+        if (!auth) {
+            return undefined;
+        }
+
+        // Firestore が初期化されているか確認
         if (!db) {
-            throw new Error('Firebase の初期化が完了していません。環境変数を確認してください。');
+            return undefined;
         }
 
-        const normalizedEmail = normalizeEmail(email);
-        const existingUser = await getDoc(getUserDoc(normalizedEmail));
+        // 現在ログインしている Firebase ユーザー
+        const firebaseUser = auth.currentUser;
 
-        if (existingUser.exists()) {
-            throw new Error('このメールアドレスは既に使用されています');
+        // 未ログインなら終了
+        if (!firebaseUser) {
+            return undefined;
         }
 
-        const userId = crypto.randomUUID();
-        const passwordHash = await hashPassword(password);
-        const userData = {
-            id: userId,
-            name,
-            email: normalizedEmail,
-            passwordHash,
-        };
-
-        await setDoc(getUserDoc(normalizedEmail), userData);
-        const token = crypto.randomUUID();
-
-        return {
-            user: new User({
-                id: userData.id,
-                name: userData.name,
-                email: userData.email,
-            }),
-            token,
-        };
-    },
-    async signin(
-        email: string,
-        password: string,
-    ): Promise<{ user: User; token: string }> {
-        if (!db) {
-            throw new Error('Firebase の初期化が完了していません。環境変数を確認してください。');
-        }
-
-        const normalizedEmail = normalizeEmail(email);
-        const userSnapshot = await getDoc(getUserDoc(normalizedEmail));
-
-        if (!userSnapshot.exists()) {
-            throw new Error('メールアドレスまたはパスワードが正しくありません');
-        }
-
-        const userData = userSnapshot.data() as {
-            id: string;
-            name: string;
-            email: string;
-            passwordHash?: string;
-            password?: string;
-        };
-
-        const isValidPassword = await verifyPassword(
-            password,
-            userData.passwordHash ?? userData.password,
+        /**
+         * sessions/{uid}
+         */
+        const sessionSnapshot = await getDoc(
+            doc(db, 'sessions', firebaseUser.uid),
         );
 
-        if (!isValidPassword) {
-            throw new Error('メールアドレスまたはパスワードが正しくありません');
+        // セッションが存在しない
+        if (!sessionSnapshot.exists()) {
+            return undefined;
         }
 
-        const user = new User({
-            id: userData.id,
-            name: userData.name,
-            email: userData.email,
-        });
-
-        const token = crypto.randomUUID();
-
-        return { user, token };
-    },
-    async getCurrentUser(): Promise<User | undefined> {
-        if (!db) return undefined;
-
-        const sessionToken = await readSessionToken();
-        if (!sessionToken) return undefined;
-
-        const sessionSnapshot = await getDoc(doc(db, 'sessions', 'current'));
-        if (!sessionSnapshot.exists()) return undefined;
-
         const sessionData = sessionSnapshot.data() as {
-            user?: User;
+            user?: {
+                id: string;
+                name: string;
+                email: string;
+                isAnonymous?: boolean;
+            };
         };
 
-        if (!sessionData.user) return undefined;
+        // user が保存されていない
+        if (!sessionData.user) {
+            return undefined;
+        }
 
-        return new User(sessionData.user);
+        // User エンティティへ変換
+        return new User({
+            id: sessionData.user.id,
+            name: sessionData.user.name,
+            email: sessionData.user.email,
+            isAnonymous: sessionData.user.isAnonymous,
+        });
     },
 };

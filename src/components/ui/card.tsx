@@ -1,79 +1,118 @@
-import * as React from 'react';
+import type { HTMLAttributes } from 'react';
 import '../../styles/components/card.css';
 
-const Card = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={`card ${className || ''}`}
-    {...props}
-  />
-));
-Card.displayName = 'Card';
+/**
+ * Cardコンポーネントで使用する共通のPropsです。
+ *
+ * HTMLのdivタグで使用できる属性
+ * (classNameやonClickなど)をそのまま利用できます。
+ */
+type CardProps = HTMLAttributes<HTMLDivElement>;
 
-const CardHeader = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={`card-header ${className || ''}`}
-    {...props}
-  />
-));
-CardHeader.displayName = 'CardHeader';
+/**
+ * カード全体を囲むコンポーネントです。
+ */
+export function Card({
+  className = '',
+  children,
+  ...props
+}: CardProps) {
+  return (
+    <div
+      className={`card ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+}
 
-const CardTitle = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={`card-title ${className || ''}`}
-    {...props}
-  />
-));
-CardTitle.displayName = 'CardTitle';
+/**
+ * カード上部(タイトルなど)を表示します。
+ */
+export function CardHeader({
+  className = '',
+  children,
+  ...props
+}: CardProps) {
+  return (
+    <div
+      className={`card-header ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+}
 
-const CardDescription = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={`card-description ${className || ''}`}
-    {...props}
-  />
-));
-CardDescription.displayName = 'CardDescription';
+/**
+ * カードタイトルを表示します。
+ */
+export function CardTitle({
+  className = '',
+  children,
+  ...props
+}: CardProps) {
+  return (
+    <div
+      className={`card-title ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+}
 
-const CardContent = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div ref={ref} className={`card-content ${className || ''}`} {...props} />
-));
-CardContent.displayName = 'CardContent';
+/**
+ * タイトルの補足説明を表示します。
+ */
+export function CardDescription({
+  className = '',
+  children,
+  ...props
+}: CardProps) {
+  return (
+    <div
+      className={`card-description ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+}
 
-const CardFooter = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={`card-footer ${className || ''}`}
-    {...props}
-  />
-));
-CardFooter.displayName = 'CardFooter';
+/**
+ * カードの本文を表示します。
+ */
+export function CardContent({
+  className = '',
+  children,
+  ...props
+}: CardProps) {
+  return (
+    <div
+      className={`card-content ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+}
 
-export {
-  Card,
-  CardHeader,
-  CardFooter,
-  CardTitle,
-  CardDescription,
-  CardContent,
-};
+/**
+ * カード下部(ボタンなど)を表示します。
+ */
+export function CardFooter({
+  className = '',
+  children,
+  ...props
+}: CardProps) {
+  return (
+    <div
+      className={`card-footer ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+}

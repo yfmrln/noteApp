@@ -1,64 +1,152 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { FiPlus } from 'react-icons/fi';
+
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from '../components/ui/card';
-import { FiPlus } from 'react-icons/fi';
-import '../styles/pages/home.css';
-import { useState } from 'react';
+
 import { noteRepository } from '../modules/notes/note.repository';
 import { useNoteStore } from '../modules/notes/notes.state';
-import { useNavigate } from 'react-router-dom';
 
-// この画面は「ノートを作るための入口」です。
-// タイトルを入力してボタンを押すと、新しいノートを作成して詳細画面へ移動します。
+import '../styles/pages/home.css';
+
+/**
+ * ホーム画面です。
+ *
+ * 新しいノートを作成し、
+ * 作成後はノート詳細画面へ移動します。
+ */
 export default function Home() {
-  const [title, setTitle] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const noteStore = useNoteStore();
-  const navigate = useNavigate();
 
-  // 新しいノートを作成する処理です。
-  // 作成に成功したら、そのノートの詳細画面へすぐ移動させます。
+  /**
+   * 入力中のタイトル
+   */
+  const [
+    title,
+    setTitle,
+  ] = useState('');
+
+  /**
+   * 作成中フラグ
+   *
+   * 二重クリック防止に利用します。
+   */
+  const [
+    isSubmitting,
+    setIsSubmitting,
+  ] = useState(false);
+
+  /**
+   * ノート一覧(State)
+   */
+  const noteStore =
+    useNoteStore();
+
+  /**
+   * ページ遷移
+   */
+  const navigate =
+    useNavigate();
+
+  /**
+   * タイトル入力
+   */
+  const handleTitleChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+
+    setTitle(
+      event.target.value,
+    );
+
+  };
+
+  /**
+   * ノートを新しく作成します。
+   */
   const createNote = async () => {
-    setIsSubmitting(true);
+
     try {
-      const newNote = await noteRepository.create({ title });
-      noteStore.set([newNote]);
+      setIsSubmitting(true);
+      /**
+       * 前後の空白を除去します。
+       */
+      const trimmedTitle =
+        title.trim();
+
+      /**
+       * タイトル未入力なら
+       * 「無題」で作成します。
+       */
+      const newNote =
+        await noteRepository.create({
+
+          title:
+            trimmedTitle || '無題',
+        });
+
+      /**
+       * Stateへ追加
+       */
+      noteStore.set([
+        newNote,
+      ]);
+
+      /**
+       * 入力欄を初期化
+       */
       setTitle('');
-      navigate(`/notes/${newNote.id}`);
+
+      /**
+       * 作成したノートを開く
+       */
+      navigate(
+        `/notes/${newNote.id}`,
+      );
+
     } catch (error) {
       console.error(error);
-      alert('ノートの作成に失敗しました');
+      alert(
+        'ノートの作成に失敗しました。',
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <Card className='home-card'>
-      <CardHeader className='home-card-header'>
-        <CardTitle className='home-card-title'>
+
+    <Card className="home-card">
+      <CardHeader className="home-card-header">
+        <CardTitle className="home-card-title">
           新しいノートを作成してみましょう
         </CardTitle>
       </CardHeader>
-      <CardContent className='home-card-content'>
-        <div className='home-input-container'>
+
+      <CardContent className="home-card-content">
+        <div className="home-input-container">
           <input
-            className='home-input'
-            placeholder='ノートのタイトルを入力'
-            type='text'
+            className="home-input"
+            type="text"
+            placeholder="ノートのタイトルを入力"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={
+              handleTitleChange
+            }
           />
-          <button 
-            className='home-button' 
+          <button
+            className="home-button"
             onClick={createNote}
             disabled={isSubmitting}
           >
             <FiPlus size={16} />
-            <span>ノート作成</span>
+            <span>
+              ノート作成
+            </span>
           </button>
         </div>
       </CardContent>
