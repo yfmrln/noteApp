@@ -105,6 +105,7 @@
 
 .user-item-dropdown {
   width: 20rem;
+  z-index: calc(var(--z-modal) + 20);
 }
 
 .user-item-dropdown-content {
@@ -332,6 +333,24 @@
      * 指定しても構いません（例: z-index: 40;）。
      */
     z-index: calc(var(--z-modal) - 1);
+  }
+
+  .title-input-container {
+    /* 54px → 16px程度まで減らし、横幅を確保します */
+    padding-left: var(--spacing-4);
+  }
+
+  .title-input {
+    /* 5xl（かなり大きい）→ 3xl程度に落として、
+       1行あたりに入る文字数を増やします */
+    font-size: var(--font-3xl);
+  }
+
+  .layout-main {
+    padding-top: calc(
+      2.25rem + var(--spacing-3) * 2
+    );
+
   }
 
 }

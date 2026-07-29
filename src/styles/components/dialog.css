@@ -2,7 +2,7 @@
 .dialog-overlay {
   position: fixed;
   inset: 0;
-  z-index: var(--z-dropdown);
+  z-index: var(--z-modal);
   background-color: rgba(0, 0, 0, 0.8);
 }
 
@@ -10,7 +10,8 @@
   position: fixed;
   left: 50%;
   top: 50%;
-  z-index: var(--z-dropdown);
+  /* 同様に --z-modal を使います */
+  z-index: var(--z-modal);
   display: grid;
   width: 100%;
   max-width: 32rem;
