@@ -217,3 +217,121 @@
 .app-container {
   height: 100%;
 }
+
+/* ============================
+   スマホ対応：サイドバーの開閉
+   ============================ */
+
+/**
+ * ハンバーガーボタン
+ *
+ * ポイント①：PCでは常に非表示にします。
+ * スマホ用のメディアクエリ内だけで表示に切り替えます。
+ */
+.hamburger-button {
+  display: none;
+  position: fixed;
+  top: var(--spacing-3);
+  left: var(--spacing-3);
+  z-index: var(--z-modal);
+  background-color: var(--color-neutral-100);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-2);
+  cursor: pointer;
+}
+
+.hamburger-button:hover {
+  background-color: var(--color-neutral-200);
+}
+
+/**
+ * サイドバーの背景の幕（オーバーレイ）
+ *
+ * ポイント②：PCでは常に非表示。
+ * スマホでサイドバーが開いている時だけ表示し、
+ * タップで閉じられるようにします。
+ */
+.sidebar-overlay {
+  display: none;
+}
+
+
+/**
+ * スマホ表示（画面幅768px以下）
+ *
+ * ポイント③：ここが今回のメインです。
+ *
+ * PCでは .sidebar は layout-container の中で
+ * 横並び（flexアイテム）として配置されていますが、
+ * スマホでは「画面に固定して、必要な時だけスライドして出す」
+ * 動き方に変える必要があります。
+ *
+ * そのため position: fixed に切り替え、
+ * 普段は画面外（左側）に隠しておき、
+ * sidebar-open クラスが付いた時だけ画面内へスライドさせます。
+ */
+@media (max-width: 768px) {
+
+  .hamburger-button {
+    display: block;
+  }
+
+  .sidebar-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    z-index: var(--z-modal);
+
+    /* 普段は画面外（左側）に隠しておきます */
+    transform: translateX(-100%);
+    transition: transform var(--transition-base) ease-in-out;
+  }
+
+  /* isSidebarOpen が true の時だけ付くクラス */
+  .sidebar-wrapper.sidebar-open {
+    transform: translateX(0);
+  }
+
+  /**
+   * .sidebar 自体の幅はPCと同じ15remのままでも良いですが、
+   * 画面が小さい端末では少し広めに使いたいことが多いため、
+   * 画面幅の80%を上限に、最大15remという指定にしています。
+   * （お好みで固定値に戻しても問題ありません）
+   */
+  .sidebar {
+    width: min(80vw, 15rem);
+  }
+
+  /**
+   * ポイント④：sidebar-placeholder はPC専用の
+   * 余白確保用パーツなので、スマホでは非表示にします。
+   * （サイドバーが固定表示になり、レイアウト上の
+   * 場所取りが不要になるためです）
+   */
+  .sidebar-placeholder {
+    display: none;
+  }
+
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.4);
+
+    /**
+     * サイドバー（z-modal）より背面、
+     * 通常のコンテンツより前面にしたいので、
+     * z-modalより1つ低いレイヤーとして扱います。
+     *
+     * 変数に無い場合は z-index を直接数値で
+     * 指定しても構いません（例: z-index: 40;）。
+     */
+    z-index: calc(var(--z-modal) - 1);
+  }
+
+}

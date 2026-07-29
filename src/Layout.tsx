@@ -19,6 +19,9 @@ import {
   useAtomValue,
 } from 'jotai';
 
+// ポイント①：ハンバーガーボタン用のアイコンを追加します。
+import { FiMenu } from 'react-icons/fi';
+
 
 import SideBar from './components/SideBar';
 import SearchModal from './components/SearchModal';
@@ -86,20 +89,26 @@ export default function Layout() {
   ] = useState<Note[]>([]);
 
 
+  /**
+   * ポイント②：サイドバーが開いているかどうかの状態です。
+   *
+   * スマホでは最初は閉じておきたいので、
+   * 初期値をfalse（閉じている）にしています。
+   *
+   * PC表示ではCSS側（@media (max-width: 768px) の外）で
+   * サイドバーを常に表示するようにしているため、
+   * この状態はスマホ表示の時だけ意味を持ちます。
+   */
+  const [
+    isSidebarOpen,
+    setIsSidebarOpen,
+  ] = useState(false);
+
 
   const navigate =
     useNavigate();
 
 
-  /**
-   * ポイント①：「今このIDのユーザーだけが有効」という
-   * 目印をrefに保存します。
-   *
-   * refは再レンダリングされても値が消えず、
-   * かつrefの値を変えても再レンダリングは起きません。
-   * 「取得結果が今も使えるかどうかのチェック用の目印」
-   * として使うのに向いています。
-   */
   const currentUserIdRef =
     useRef<string | undefined>(
       currentUser?.id,
@@ -121,38 +130,20 @@ export default function Layout() {
   const fetchNotes =
     useCallback(async () => {
 
-
-      // ログインしていない場合
-      // Firestoreへアクセスしません。
       if (!currentUser) {
         return;
       }
 
-
-      /**
-       * このリクエストがどのユーザーのものか
-       * 覚えておきます。
-       */
       const requestedUserId =
         currentUser.id;
-
 
       try {
 
         setIsLoading(true);
 
-
         const notes =
           await noteRepository.find();
 
-
-        /**
-         * ポイント②：取得が完了した時点で、
-         * 途中でログアウト（＝別のユーザーIDに変化）
-         * していないか確認します。
-         *
-         * 変わっていたら、この結果はもう使いません。
-         */
         if (
           currentUserIdRef.current !==
           requestedUserId
@@ -160,82 +151,41 @@ export default function Layout() {
           return;
         }
 
-
-        // 古いデータを削除
         noteStore.clear();
-
-
-        // 最新データを保存
-        noteStore.set(
-          notes,
-        );
-
+        noteStore.set(notes);
 
       } catch(error) {
 
-
-        /**
-         * ポイント③：エラーになった場合も同様に、
-         * すでにログアウトしていたら
-         * アラートを出さずに終了します。
-         */
         if (
           currentUserIdRef.current !==
           requestedUserId
         ) {
           return;
         }
-
 
         console.error(
           'ノート取得エラー:',
           error,
         );
 
-
         alert(
           'ノート一覧の取得に失敗しました。',
         );
 
-
       } finally {
 
-        /**
-         * ローディング状態の解除も、
-         * 今も有効なリクエストの時だけ行います。
-         */
         if (
           currentUserIdRef.current ===
           requestedUserId
         ) {
           setIsLoading(false);
         }
-
       }
 
-
-      /**
-       * ポイント④：依存配列は「currentUser（オブジェクト）」ではなく
-       * 「currentUser?.id（文字列）」にします。
-       *
-       * オブジェクトは中身が同じでも再生成されると別物扱いになりますが、
-       * 文字列のidであれば同じ人である限り変化したと判定されません。
-       * これにより不要な再実行（＝ちらつきの原因）を防ぎます。
-       *
-       * noteStoreも依存から外しています。
-       * clear/setのような操作用関数は基本的に毎回同じものを指すため、
-       * 依存に含める必要はありません。
-       */
     }, [
       currentUser?.id,
     ]);
 
-
-
-  /**
-   * ログインユーザーが変わった時
-   * ノートを読み込みます。
-   */
   useEffect(() => {
 
     fetchNotes();
@@ -245,80 +195,61 @@ export default function Layout() {
   ]);
 
 
-
-
-
-  /**
-   * ノート検索処理
-   */
   const searchNote =
     async (
       keyword: string,
     ) => {
 
-
       try {
-
 
         const notes =
           await noteRepository.find({
-
             keyword:
               keyword.trim(),
-
           });
-
-
 
         setSearchResult(
           notes,
         );
 
-
       } catch(error) {
-
 
         console.error(
           '検索エラー:',
           error,
         );
 
-
         alert(
           '検索に失敗しました。',
         );
-
 
       }
 
     };
 
-
-
-
-
   /**
    * 選択したノート詳細へ移動
+   *
+   * ポイント③：スマホでノートを選んだ時、
+   * サイドバーが開いたままだと操作しづらいので、
+   * 自動的に閉じるようにします（PCでは影響ありません）。
    */
   const moveToDetail =
     (
       noteId: string,
     ) => {
 
-
       navigate(
         `/notes/${noteId}`,
       );
 
-
       // 検索画面を閉じる
       setIsShowModal(false);
 
+      // サイドバーも閉じる（スマホ用）
+      setIsSidebarOpen(false);
+
     };
-
-
-
-
 
   // ログインしていない場合
   // サインイン画面へ移動
@@ -334,61 +265,98 @@ export default function Layout() {
   }
 
 
-
-
-
   return (
-
     <div className="layout-container">
 
+      {/*
+        ポイント④：ハンバーガーボタンです。
 
-      <SideBar
-        isLoading={isLoading}
-        onSearchButtonClick={() =>
-          setIsShowModal(true)
+        CSS側（layout.css）で
+        「PCでは常にdisplay:none、スマホでのみ表示」
+        となるようにしています。
+
+        押すたびに isSidebarOpen を true/false 反転させます。
+      */}
+      <button
+        type="button"
+        className="hamburger-button"
+        aria-label="メニューを開閉する"
+        onClick={() =>
+          setIsSidebarOpen(
+            (prev) => !prev,
+          )
         }
-      />
+      >
+        <FiMenu size={22} />
+      </button>
+
+      {/*
+        ポイント⑤：サイドバーをラップするdivです。
+
+        isSidebarOpenがtrueの時だけ
+        "sidebar-open" というクラスを追加のクラス名として付けます。
+
+        CSS側では
+        ・PC表示：常に画面内に表示（通常のflexアイテム）
+        ・スマホ表示：普段は画面外に隠し、sidebar-openが付いた時だけ
+          画面内へスライドさせる
+        という挙動を、このクラスの有無で切り替えています。
+      */}
+      <div
+        className={
+          isSidebarOpen
+            ? 'sidebar-wrapper sidebar-open'
+            : 'sidebar-wrapper'
+        }
+      >
+        <SideBar
+          isLoading={isLoading}
+          onSearchButtonClick={() =>
+            setIsShowModal(true)
+          }
+        />
+      </div>
 
 
+      {/*
+        ポイント⑥：スマホでサイドバーが開いている時だけ表示する、
+        背景の半透明の幕（オーバーレイ）です。
+
+        ここをタップするとサイドバーが閉じます。
+        PC表示ではCSS側で常にdisplay:noneにしているため、
+        邪魔になりません。
+      */}
+      {
+        isSidebarOpen && (
+          <div
+            className="sidebar-overlay"
+            onClick={() =>
+              setIsSidebarOpen(false)
+            }
+          />
+        )
+      }
 
       <main className="layout-main">
-
         <Outlet />
-
       </main>
-
-
-
-
       <SearchModal
-
         isOpen={
           isShowModal
         }
-
-
         onClose={() =>
           setIsShowModal(false)
         }
-
-
         notes={
           searchResult
         }
-
-
         onKeywordChange={
           searchNote
         }
-
-
         onItemSelect={
           moveToDetail
         }
-
       />
-
-
     </div>
 
   );
